@@ -55,6 +55,12 @@ export class SnowflakeService {
     return this.executeQuery(connection, sql);
   }
 
+  async getTableColumns(connection: Connection, database: string, schema: string, table: string): Promise<string[]> {
+    const sql = `SHOW COLUMNS IN TABLE ${quoteQualifiedIdentifier([database, schema, table])}`;
+    const result = await this.executeQuery(connection, sql);
+    return this.extractNameColumn(result, ["column_name", "name"]);
+  }
+
   private extractNameColumn(result: QueryExecutionResult, candidateColumns: string[]): string[] {
     const lookup = new Set(candidateColumns.map((item) => item.toLowerCase()));
     const matchedColumn = result.columns.find((column) => lookup.has(column.toLowerCase()));

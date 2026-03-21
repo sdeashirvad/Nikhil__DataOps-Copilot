@@ -372,8 +372,9 @@ export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<Conn
       table
     });
     node.iconPath = new vscode.ThemeIcon("table");
+    node.contextValue = "dataops.table";
     node.command = {
-      command: "dataops.previewTableFromTree",
+      command: "dataops.previewTable",
       title: "Preview Table",
       arguments: [
         {

@@ -13,10 +13,18 @@
   ],
   "activationEvents": [
     "onCommand:dataops.addConnection",
+    "onCommand:dataops.removeConnection",
     "onCommand:dataops.switchConnection",
     "onCommand:dataops.runQuery",
-    "onCommand:dataops.previewTableFromTree",
-    "onView:dataops.connectionsView"
+    "onCommand:dataops.predictQueryCost",
+    "onCommand:dataops.optimizeQuery",
+    "onCommand:dataops.generateQuery",
+    "onCommand:dataops.previewTable",
+    "onCommand:dataops.openHistoryItem",
+    "onCommand:dataops.rerunHistoryItem",
+    "onCommand:dataops.clearHistory",
+    "onView:dataops.connectionsView",
+    "onView:dataops.historyView"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -24,6 +32,11 @@
       {
         "command": "dataops.addConnection",
         "title": "DataOps: Add Connection",
+        "category": "DataOps"
+      },
+      {
+        "command": "dataops.removeConnection",
+        "title": "DataOps: Remove Connection",
         "category": "DataOps"
       },
       {
@@ -37,14 +50,47 @@
         "category": "DataOps"
       },
       {
+        "command": "dataops.predictQueryCost",
+        "title": "DataOps: Predict Query Cost",
+        "category": "DataOps"
+      },
+      {
+        "command": "dataops.optimizeQuery",
+        "title": "DataOps: Optimize Query",
+        "category": "DataOps"
+      },
+      {
+        "command": "dataops.generateQuery",
+        "title": "DataOps: Generate SQL",
+        "category": "DataOps"
+      },
+      {
         "command": "dataops.refreshConnections",
         "title": "DataOps: Refresh Connections",
         "category": "DataOps"
       },
       {
-        "command": "dataops.previewTableFromTree",
+        "command": "dataops.previewTable",
         "title": "DataOps: Preview Table",
         "category": "DataOps"
+      },
+      {
+        "command": "dataops.openHistoryItem",
+        "title": "Open in Editor",
+        "category": "DataOps",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "dataops.rerunHistoryItem",
+        "title": "Re-run Query",
+        "category": "DataOps",
+        "icon": "$(run)"
+      },
+      {
+        "command": "dataops.clearHistory",
+        "title": "DataOps: Clear Query History",
+        "category": "DataOps",
+        "icon": "$(clear-all)"
       }
     ],
     "viewsContainers": {
@@ -61,10 +107,31 @@
         {
           "id": "dataops.connectionsView",
           "name": "Connections"
+        },
+        {
+          "id": "dataops.historyView",
+          "name": "Query History"
         }
       ]
     },
     "menus": {
+      "editor/title": [
+        {
+          "command": "dataops.runQuery",
+          "when": "resourceExtname == .sql",
+          "group": "navigation"
+        },
+        {
+          "command": "dataops.optimizeQuery",
+          "when": "resourceExtname == .sql",
+          "group": "navigation"
+        },
+        {
+          "command": "dataops.predictQueryCost",
+          "when": "resourceExtname == .sql",
+          "group": "navigation"
+        }
+      ],
       "view/title": [
         {
           "command": "dataops.addConnection",
@@ -72,12 +139,66 @@
           "group": "navigation"
         },
         {
+          "command": "dataops.removeConnection",
+          "when": "view == dataops.connectionsView",
+          "group": "navigation"
+        },
+        {
           "command": "dataops.refreshConnections",
           "when": "view == dataops.connectionsView",
           "group": "navigation"
+        },
+        {
+          "command": "dataops.clearHistory",
+          "when": "view == dataops.historyView",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "dataops.removeConnection",
+          "when": "view == dataops.connectionsView && viewItem == dataops.connection",
+          "group": "inline"
+        },
+        {
+          "command": "dataops.openHistoryItem",
+          "when": "viewItem == dataops.historyItem",
+          "group": "inline@1"
+        },
+        {
+          "command": "dataops.rerunHistoryItem",
+          "when": "viewItem == dataops.historyItem",
+          "group": "inline@2"
+        },
+        {
+          "command": "dataops.generateQuery",
+          "when": "view == dataops.connectionsView && viewItem == dataops.table",
+          "group": "inline@3"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "dataops.runQuery",
+        "key": "ctrl+enter",
+        "when": "editorTextFocus && resourceExtname == .sql"
+      },
+      {
+        "command": "dataops.optimizeQuery",
+        "key": "ctrl+alt+o",
+        "when": "editorTextFocus && resourceExtname == .sql"
+      },
+      {
+        "command": "dataops.predictQueryCost",
+        "key": "ctrl+alt+p",
+        "when": "editorTextFocus && resourceExtname == .sql"
+      },
+      {
+        "command": "dataops.generateQuery",
+        "key": "ctrl+alt+g",
+        "when": "editorTextFocus"
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p ./",
@@ -97,7 +218,9 @@
   ],
   "type": "commonjs",
   "dependencies": {
+    "@google/genai": "^1.12.0",
     "axios": "^1.13.6",
+    "dotenv": "^16.6.1",
     "snowflake-sdk": "^2.3.5"
   },
   "devDependencies": {
