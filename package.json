@@ -260,11 +260,13 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext .ts",
-    "pretest": "npm run compile && npm run lint"
+    "pretest": "npm run compile && npm run lint",
+    "package:vsix": "npm run compile && npx @vscode/vsce package --skip-license --out dataops-copilot.vsix",
+    "install:vsix": "code --install-extension dataops-copilot.vsix --force"
   },
   "repository": {
     "type": "git",
-    "url": "."
+    "url": "https://github.com/Nikh9123/DataOps-Copilot.git"
   },
   "keywords": [
     "snowflake",
@@ -281,9 +283,10 @@
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
-    "@types/vscode": "^1.110.0",
+    "@types/vscode": "1.90.0",
     "@typescript-eslint/eslint-plugin": "^8.57.1",
     "@typescript-eslint/parser": "^8.57.1",
+    "@vscode/vsce": "^3.7.1",
     "eslint": "^10.1.0",
     "typescript": "^5.9.3"
   }

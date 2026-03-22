@@ -235,6 +235,31 @@ npm run compile
 - Open the project in VS Code.
 - Press F5.
 
+### 5. Create VSIX package (for direct use)
+
+Build a distributable VS Code extension package:
+
+```bash
+npm run package:vsix
+```
+
+This creates a file named `dataops-copilot.vsix` in the project root.
+
+### 6. Install extension from the VSIX file
+
+Install directly from CLI:
+
+```bash
+npm run install:vsix
+```
+
+Or install from VS Code UI:
+
+1. Open Extensions panel.
+2. Click the `...` menu.
+3. Select `Install from VSIX...`.
+4. Choose `dataops-copilot.vsix`.
+
 ---
 
 ## 🔑 Configuration

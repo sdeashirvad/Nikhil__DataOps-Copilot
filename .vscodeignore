@@ -3,6 +3,9 @@
 src/**
 .eslintrc.json
 .gitignore
+.env
+.env.*
+example.env
 tsconfig.json
 **/*.map
 **/*.ts
