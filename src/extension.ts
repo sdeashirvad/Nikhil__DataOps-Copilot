@@ -6,10 +6,12 @@ import { registerOptimizeQueryCommand } from "./commands/optimizeQueryCommand";
 import { registerPredictQueryCostCommand } from "./commands/predictQueryCostCommand";
 import { registerRemoveConnectionCommand } from "./commands/removeConnectionCommand";
 import { registerRunQueryCommand } from "./commands/runQueryCommand";
+import { registerShowDatabricksDetailsCommand } from "./commands/showDatabricksDetailsCommand";
 import { registerSwitchConnectionCommand } from "./commands/switchConnectionCommand";
 import { registerHistoryCommands } from "./commands/queryHistoryCommand";
 import { Connection } from "./models/connection";
 import { ConnectionsTreeDataProvider } from "./providers/connectionsTreeDataProvider";
+import { DatabricksTreeProvider } from "./providers/databricksTreeProvider";
 import { HistoryTreeDataProvider } from "./providers/historyTreeProvider";
 import { ConnectionManager } from "./services/connectionManager";
 import { SecretStorageService } from "./services/secretStorageService";
@@ -19,24 +21,39 @@ import { AiProviderFactory } from "./services/aiProvider";
 import { AiOptimizerService } from "./services/aiOptimizerService";
 import { AiQueryGeneratorService } from "./services/aiQueryGeneratorService";
 import { AiCostEstimatorService } from "./services/aiCostEstimatorService";
+import { DatabricksClusterService } from "./services/databricksClusterService";
+import { DatabricksJobsService } from "./services/databricksJobsService";
+import { DatabricksWarehouseService } from "./services/databricksWarehouseService";
+import { DatabricksQueryHistoryService } from "./services/databricksQueryHistoryService";
+import { DatabricksMetadataService } from "./services/databricksMetadataService";
+import { DatabricksSqlService } from "./services/databricksSqlService";
+import { GeminiAdvisorService } from "./services/geminiAdvisorService";
 import { QueryCostAnalyzer } from "./services/queryCostAnalyzer";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const connectionManager = new ConnectionManager();
   const secretStorageService = new SecretStorageService(context.secrets, context.globalState);
   const snowflakeService = new SnowflakeService();
+  const databricksClusterService = new DatabricksClusterService();
+  const databricksJobsService = new DatabricksJobsService();
+  const databricksWarehouseService = new DatabricksWarehouseService();
+  const databricksQueryHistoryService = new DatabricksQueryHistoryService();
+  const databricksMetadataService = new DatabricksMetadataService();
+  const databricksSqlService = new DatabricksSqlService();
   const queryHistoryService = new QueryHistoryService(context.globalState);
   const queryCostAnalyzer = new QueryCostAnalyzer();
 
   let aiOptimizerService: AiOptimizerService | undefined;
   let aiQueryGeneratorService: AiQueryGeneratorService | undefined;
   let aiCostEstimatorService: AiCostEstimatorService | undefined;
+  let geminiAdvisorService: GeminiAdvisorService | undefined;
 
   try {
     const aiProvider = AiProviderFactory.fromEnvironment();
     aiOptimizerService = new AiOptimizerService(aiProvider);
     aiQueryGeneratorService = new AiQueryGeneratorService(aiProvider);
     aiCostEstimatorService = new AiCostEstimatorService(aiProvider);
+    geminiAdvisorService = new GeminiAdvisorService(aiProvider);
   } catch {
     // AI commands will be registered with setup hints when env vars are missing.
   }
@@ -46,13 +63,55 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   statusBarItem.command = "dataops.switchConnection";
   statusBarItem.tooltip = "Switch active DataOps connection";
 
-  const treeProvider = new ConnectionsTreeDataProvider(connectionManager, secretStorageService, snowflakeService);
+  const databricksTreeProvider = new DatabricksTreeProvider(
+    databricksClusterService,
+    databricksJobsService,
+    databricksWarehouseService,
+    databricksQueryHistoryService,
+    databricksMetadataService,
+    async (connectionId) => {
+      const baseConnection = connectionManager.getConnectionById(connectionId);
+      if (!baseConnection || baseConnection.type !== "databricks") {
+        throw new Error("Databricks connection not found.");
+      }
+
+      return secretStorageService.getConnection(connectionId).then((secret) => {
+        if (!secret?.accessToken && !secret?.password) {
+          throw new Error("Credentials not found for the selected connection.");
+        }
+
+        return {
+          ...baseConnection,
+          config: {
+            ...baseConnection.config,
+            accessToken: secret.accessToken,
+            password: secret.password
+          }
+        };
+      });
+    },
+    () => treeProvider.refresh()
+  );
+  const treeProvider = new ConnectionsTreeDataProvider(
+    connectionManager,
+    secretStorageService,
+    snowflakeService,
+    databricksTreeProvider
+  );
   const historyProvider = new HistoryTreeDataProvider(queryHistoryService);
 
   const treeViewDisposable = vscode.window.registerTreeDataProvider("dataops.connectionsView", treeProvider);
   const historyViewDisposable = vscode.window.registerTreeDataProvider("dataops.historyView", historyProvider);
 
-  context.subscriptions.push(outputChannel, statusBarItem, treeViewDisposable, historyViewDisposable, queryHistoryService);
+  context.subscriptions.push(
+    outputChannel,
+    statusBarItem,
+    treeViewDisposable,
+    historyViewDisposable,
+    queryHistoryService,
+    treeProvider,
+    databricksTreeProvider
+  );
 
   const refreshUi = () => {
     treeProvider.refresh();
@@ -98,13 +157,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       connectionManager,
       secretStorageService,
       snowflakeService,
+      databricksSqlService,
       outputChannel,
       queryHistoryService,
       queryCostAnalyzer,
       aiCostEstimatorService
     ),
-    registerPreviewTableCommand(connectionManager, secretStorageService, snowflakeService, queryHistoryService),
+    registerPreviewTableCommand(
+      connectionManager,
+      secretStorageService,
+      snowflakeService,
+      databricksSqlService,
+      queryHistoryService
+    ),
     registerPredictQueryCostCommand(queryCostAnalyzer, aiCostEstimatorService),
+    registerShowDatabricksDetailsCommand(
+      connectionManager,
+      secretStorageService,
+      databricksClusterService,
+      geminiAdvisorService
+    ),
     registerOptimizeQueryCommand(
       aiOptimizerService ??
         new AiOptimizerService({
@@ -130,6 +202,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
     ...registerHistoryCommands(queryHistoryService, connectionManager, secretStorageService, snowflakeService),
     vscode.commands.registerCommand("dataops.refreshConnections", () => {
+      treeProvider.hardRefresh();
+      refreshUi();
+      void vscode.window.setStatusBarMessage("DataOps: Refreshed all connections and metadata", 2500);
+    }),
+    vscode.commands.registerCommand("dataops.refreshDatabricksServices", () => {
+      databricksTreeProvider.clearCaches();
+      treeProvider.refresh();
       refreshUi();
     })
   );

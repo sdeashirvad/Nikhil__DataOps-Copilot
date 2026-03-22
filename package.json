@@ -19,6 +19,8 @@
     "onCommand:dataops.predictQueryCost",
     "onCommand:dataops.optimizeQuery",
     "onCommand:dataops.generateQuery",
+    "onCommand:dataops.showDatabricksDetails",
+    "onCommand:dataops.refreshDatabricksServices",
     "onCommand:dataops.previewTable",
     "onCommand:dataops.openHistoryItem",
     "onCommand:dataops.rerunHistoryItem",
@@ -65,9 +67,20 @@
         "category": "DataOps"
       },
       {
-        "command": "dataops.refreshConnections",
-        "title": "DataOps: Refresh Connections",
+        "command": "dataops.showDatabricksDetails",
+        "title": "DataOps: Show Databricks Details",
         "category": "DataOps"
+      },
+      {
+        "command": "dataops.refreshDatabricksServices",
+        "title": "DataOps: Refresh Databricks Services",
+        "category": "DataOps"
+      },
+      {
+        "command": "dataops.refreshConnections",
+        "title": "DataOps: Refresh All Connections Data",
+        "category": "DataOps",
+        "icon": "$(refresh)"
       },
       {
         "command": "dataops.previewTable",
@@ -149,6 +162,11 @@
           "group": "navigation"
         },
         {
+          "command": "dataops.refreshDatabricksServices",
+          "when": "view == dataops.connectionsView",
+          "group": "navigation"
+        },
+        {
           "command": "dataops.clearHistory",
           "when": "view == dataops.historyView",
           "group": "navigation"
@@ -156,9 +174,14 @@
       ],
       "view/item/context": [
         {
+          "command": "dataops.refreshConnections",
+          "when": "view == dataops.connectionsView && viewItem == dataops.connection",
+          "group": "inline@1"
+        },
+        {
           "command": "dataops.removeConnection",
           "when": "view == dataops.connectionsView && viewItem == dataops.connection",
-          "group": "inline"
+          "group": "inline@2"
         },
         {
           "command": "dataops.openHistoryItem",

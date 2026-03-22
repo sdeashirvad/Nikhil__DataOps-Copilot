@@ -3,6 +3,7 @@ import { ConnectionManager } from "../services/connectionManager";
 import { Connection } from "../models/connection";
 import { SecretStorageService } from "../services/secretStorageService";
 import { SnowflakeService } from "../services/snowflakeService";
+import { DatabricksTreeProvider, DatabricksNodePayload, DatabricksNodeType } from "./databricksTreeProvider";
 import { getConnectionWithCredentials } from "../utils/connectionCredentials";
 
 type ConnectionNodeType =
@@ -13,12 +14,15 @@ type ConnectionNodeType =
   | "schema"
   | "tablesRoot"
   | "table"
+  | DatabricksNodeType
   | "loading"
   | "info"
   | "error";
 
 export type TablePreviewRequest = {
   connectionId: string;
+  platform?: "snowflake" | "databricks";
+  catalog?: string;
   database: string;
   schema: string;
   table: string;
@@ -26,9 +30,14 @@ export type TablePreviewRequest = {
 
 type NodePayload = {
   connectionId?: string;
+  catalog?: string;
   database?: string;
   schema?: string;
   table?: string;
+  cluster?: DatabricksNodePayload["cluster"];
+  run?: DatabricksNodePayload["run"];
+  warehouse?: DatabricksNodePayload["warehouse"];
+  queryHistory?: DatabricksNodePayload["queryHistory"];
 };
 
 export class ConnectionTreeItem extends vscode.TreeItem {
@@ -42,7 +51,7 @@ export class ConnectionTreeItem extends vscode.TreeItem {
   }
 }
 
-export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<ConnectionTreeItem> {
+export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<ConnectionTreeItem>, vscode.Disposable {
   private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<ConnectionTreeItem | undefined>();
   readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
 
@@ -56,13 +65,27 @@ export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<Conn
   constructor(
     private readonly connectionManager: ConnectionManager,
     private readonly secretStorageService: SecretStorageService,
-    private readonly snowflakeService: SnowflakeService
+    private readonly snowflakeService: SnowflakeService,
+    private readonly databricksTreeProvider: DatabricksTreeProvider
   ) {
     this.connectionManager.onDidChangeConnections(() => this.refresh());
   }
 
+  dispose(): void {
+    this.databricksTreeProvider.dispose();
+    this.onDidChangeTreeDataEmitter.dispose();
+  }
+
   refresh(item?: ConnectionTreeItem): void {
     this.onDidChangeTreeDataEmitter.fire(item);
+  }
+
+  hardRefresh(): void {
+    this.databasesCache.clear();
+    this.schemasCache.clear();
+    this.tablesCache.clear();
+    this.databricksTreeProvider.clearCaches();
+    this.onDidChangeTreeDataEmitter.fire(undefined);
   }
 
   getTreeItem(element: ConnectionTreeItem): vscode.TreeItem {
@@ -80,11 +103,17 @@ export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<Conn
         return Promise.resolve([this.createInfoNode("Connection unavailable")]);
       }
 
-      if (connection.type !== "snowflake") {
-        return Promise.resolve([this.createInfoNode("Metadata explorer available for Snowflake connections")]);
+      if (connection.type === "databricks") {
+        return Promise.resolve(this.databricksTreeProvider.getConnectionRoots(connection.id).map((node) => this.fromDatabricksNode(node)));
       }
 
       return Promise.resolve([this.createDatabasesRootNode(connection.id)]);
+    }
+
+    if (this.isDatabricksNodeType(element.nodeType)) {
+      return Promise.resolve(
+        this.databricksTreeProvider.getChildren(element.nodeType, element.payload).map((node) => this.fromDatabricksNode(node))
+      );
     }
 
     if (element.nodeType === "databasesRoot") {
@@ -243,7 +272,7 @@ export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<Conn
   private async loadDatabases(connectionId: string, parent: ConnectionTreeItem, key: string): Promise<void> {
     this.loadingKeys.add(key);
     this.errorKeys.delete(key);
-    this.refresh(parent);
+    this.onDidChangeTreeDataEmitter.fire(parent);
 
     try {
       const connection = await this.resolveSnowflakeConnection(connectionId);
@@ -254,7 +283,7 @@ export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<Conn
       this.errorKeys.set(key, message);
     } finally {
       this.loadingKeys.delete(key);
-      this.refresh(parent);
+      this.onDidChangeTreeDataEmitter.fire(parent);
     }
   }
 
@@ -266,7 +295,7 @@ export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<Conn
   ): Promise<void> {
     this.loadingKeys.add(key);
     this.errorKeys.delete(key);
-    this.refresh(parent);
+    this.onDidChangeTreeDataEmitter.fire(parent);
 
     try {
       const connection = await this.resolveSnowflakeConnection(connectionId);
@@ -277,7 +306,7 @@ export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<Conn
       this.errorKeys.set(key, message);
     } finally {
       this.loadingKeys.delete(key);
-      this.refresh(parent);
+      this.onDidChangeTreeDataEmitter.fire(parent);
     }
   }
 
@@ -290,7 +319,7 @@ export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<Conn
   ): Promise<void> {
     this.loadingKeys.add(key);
     this.errorKeys.delete(key);
-    this.refresh(parent);
+    this.onDidChangeTreeDataEmitter.fire(parent);
 
     try {
       const connection = await this.resolveSnowflakeConnection(connectionId);
@@ -301,7 +330,7 @@ export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<Conn
       this.errorKeys.set(key, message);
     } finally {
       this.loadingKeys.delete(key);
-      this.refresh(parent);
+      this.onDidChangeTreeDataEmitter.fire(parent);
     }
   }
 
@@ -405,6 +434,34 @@ export class ConnectionsTreeDataProvider implements vscode.TreeDataProvider<Conn
     const node = new ConnectionTreeItem("error", `Error: ${message}`, vscode.TreeItemCollapsibleState.None);
     node.iconPath = new vscode.ThemeIcon("error");
     return node;
+  }
+
+  private fromDatabricksNode(node: import("./databricksTreeProvider").DatabricksVirtualNode): ConnectionTreeItem {
+    const item = new ConnectionTreeItem(node.nodeType, node.label, node.collapsibleState, node.payload ?? {});
+    item.description = node.description;
+    item.contextValue = node.contextValue;
+    item.iconPath = node.iconName ? new vscode.ThemeIcon(node.iconName) : undefined;
+    item.command = node.command;
+    return item;
+  }
+
+  private isDatabricksNodeType(nodeType: ConnectionNodeType): nodeType is DatabricksNodeType {
+    return [
+      "databricksClustersRoot",
+      "databricksCatalogsRoot",
+      "databricksCatalog",
+      "databricksSchemasRoot",
+      "databricksSchema",
+      "databricksTablesRoot",
+      "databricksTable",
+      "databricksCluster",
+      "databricksJobsRoot",
+      "databricksJob",
+      "databricksWarehousesRoot",
+      "databricksWarehouse",
+      "databricksQueryHistoryRoot",
+      "databricksQueryHistoryEntry"
+    ].includes(nodeType);
   }
 
   private buildDatabasesKey(connectionId: string): string {

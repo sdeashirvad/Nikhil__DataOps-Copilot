@@ -3,6 +3,7 @@ import { TablePreviewRequest } from "../providers/connectionsTreeDataProvider";
 import { ConnectionManager } from "../services/connectionManager";
 import { SecretStorageService } from "../services/secretStorageService";
 import { SnowflakeService } from "../services/snowflakeService";
+import { DatabricksSqlService } from "../services/databricksSqlService";
 import { QueryHistoryService } from "../services/queryHistoryService";
 import { getConnectionWithCredentials } from "../utils/connectionCredentials";
 import { showTableResultWebview, QueryMetrics } from "../utils/webviewTableRenderer";
@@ -11,6 +12,7 @@ export function registerPreviewTableCommand(
   connectionManager: ConnectionManager,
   secretStorageService: SecretStorageService,
   snowflakeService: SnowflakeService,
+  databricksSqlService: DatabricksSqlService,
   queryHistoryService: QueryHistoryService
 ): vscode.Disposable {
   // Accepts either:
@@ -41,11 +43,6 @@ export function registerPreviewTableCommand(
         return;
       }
 
-      if (baseConnection.type !== "snowflake") {
-        vscode.window.showErrorMessage("Table preview is currently supported only for Snowflake connections.");
-        return;
-      }
-
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
@@ -55,14 +52,25 @@ export function registerPreviewTableCommand(
         async () => {
           try {
             const connectionWithCredentials = await getConnectionWithCredentials(baseConnection, secretStorageService);
-            const preview = await snowflakeService.previewTable(
-              connectionWithCredentials,
-              request.database,
-              request.schema,
-              request.table
-            );
+            const previewSql =
+              baseConnection.type === "databricks"
+                ? `SELECT * FROM \`${request.catalog ?? request.database}\`.\`${request.schema}\`.\`${request.table}\` LIMIT 100`
+                : `SELECT * FROM "${request.database}"."${request.schema}"."${request.table}" LIMIT 100`;
 
-            const previewSql = `SELECT * FROM "${request.database}"."${request.schema}"."${request.table}" LIMIT 100`;
+            const preview =
+              baseConnection.type === "databricks"
+                ? await databricksSqlService.previewTable(
+                    connectionWithCredentials,
+                    request.catalog ?? request.database,
+                    request.schema,
+                    request.table
+                  )
+                : await snowflakeService.previewTable(
+                    connectionWithCredentials,
+                    request.database,
+                    request.schema,
+                    request.table
+                  );
             const metrics: QueryMetrics = {
               sql: previewSql,
               rowCount: preview.rowCount,

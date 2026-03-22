@@ -7,6 +7,7 @@ export type Connection = {
   config: {
     account: string;
     username: string;
+    warehouseId?: string;
     password?: string;
     accessToken?: string;
   };
@@ -16,6 +17,7 @@ export type StoredConnectionMetadata = Omit<Connection, "config"> & {
   config: {
     account: string;
     username: string;
+    warehouseId?: string;
   };
 };
 

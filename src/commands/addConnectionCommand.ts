@@ -32,7 +32,10 @@ export function registerAddConnectionCommand(
     }
 
     const account = await vscode.window.showInputBox({
-      prompt: "Account URL or host (e.g. xy12345.us-east-1.snowflakecomputing.com)",
+      prompt:
+        selectedType.value === "databricks"
+          ? "Workspace URL or host (e.g. adb-1234567890123456.7.azuredatabricks.net)"
+          : "Account URL or host (e.g. xy12345.us-east-1.snowflakecomputing.com)",
       validateInput: (value) => (value.trim() ? undefined : "Account is required")
     });
     if (!account) {
@@ -40,15 +43,23 @@ export function registerAddConnectionCommand(
     }
 
     const username = await vscode.window.showInputBox({
-      prompt: "Username",
+      prompt: selectedType.value === "databricks" ? "Username or email" : "Username",
       validateInput: (value) => (value.trim() ? undefined : "Username is required")
     });
     if (!username) {
       return;
     }
 
+    const warehouseId =
+      selectedType.value === "databricks"
+        ? await vscode.window.showInputBox({
+            prompt: "SQL Warehouse ID (optional but recommended for SQL execution)",
+            placeHolder: "e.g. 1234abcd5678efgh"
+          })
+        : undefined;
+
     const credential = await vscode.window.showInputBox({
-      prompt: "Password",
+      prompt: selectedType.value === "databricks" ? "Personal access token" : "Password",
       password: true,
       validateInput: (value) => (value.trim() ? undefined : "A credential value is required")
     });
@@ -63,13 +74,21 @@ export function registerAddConnectionCommand(
       type: selectedType.value,
       config: {
         account: account.trim(),
-        username: username.trim()
+        username: username.trim(),
+        warehouseId: warehouseId?.trim() || undefined
       }
     };
 
-    await secretStorageService.saveConnection(id, {
-      password: credential.trim()
-    });
+    await secretStorageService.saveConnection(
+      id,
+      selectedType.value === "databricks"
+        ? {
+            accessToken: credential.trim()
+          }
+        : {
+            password: credential.trim()
+          }
+    );
     await secretStorageService.saveConnectionMetadata(metadata);
 
     const connection: Connection = {

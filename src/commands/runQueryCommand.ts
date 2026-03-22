@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { ConnectionManager } from "../services/connectionManager";
 import { SecretStorageService } from "../services/secretStorageService";
 import { SnowflakeService } from "../services/snowflakeService";
+import { DatabricksSqlService } from "../services/databricksSqlService";
 import { QueryHistoryService } from "../services/queryHistoryService";
 import { QueryCostAnalyzer } from "../services/queryCostAnalyzer";
 import { AiCostEstimatorService } from "../services/aiCostEstimatorService";
@@ -14,6 +15,7 @@ export function registerRunQueryCommand(
   connectionManager: ConnectionManager,
   secretStorageService: SecretStorageService,
   snowflakeService: SnowflakeService,
+  databricksSqlService: DatabricksSqlService,
   outputChannel: vscode.OutputChannel,
   queryHistoryService: QueryHistoryService,
   queryCostAnalyzer: QueryCostAnalyzer,
@@ -29,11 +31,6 @@ export function registerRunQueryCommand(
     const activeConnection = connectionManager.getActiveConnection();
     if (!activeConnection) {
       vscode.window.showErrorMessage("No active connection. Use 'DataOps: Switch Active Connection' first.");
-      return;
-    }
-
-    if (activeConnection.type !== "snowflake") {
-      vscode.window.showWarningMessage("Only Snowflake query execution is currently supported.");
       return;
     }
 
@@ -82,7 +79,10 @@ export function registerRunQueryCommand(
       async () => {
         try {
           const connectionForExecution = await getConnectionWithCredentials(activeConnection, secretStorageService);
-          const result = await snowflakeService.executeQuery(connectionForExecution, sql);
+          const result =
+            activeConnection.type === "databricks"
+              ? await databricksSqlService.executeQuery(connectionForExecution, sql)
+              : await snowflakeService.executeQuery(connectionForExecution, sql);
 
           outputChannel.appendLine(`[${new Date().toISOString()}] Connection: ${activeConnection.name}`);
           outputChannel.appendLine(`Execution time: ${result.executionTimeMs ?? 0} ms`);
