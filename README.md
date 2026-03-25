@@ -1,3 +1,4 @@
+Forked from Nikhil Satysm's repo : https://github.com/Nikh9123/DataOps-Copilot
 # 🚀 DataOps Copilot
 
 > AI-powered DataOps Control Center for VS Code.
